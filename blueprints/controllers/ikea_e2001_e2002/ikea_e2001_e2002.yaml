@@ -5,7 +5,7 @@ blueprint:
     # Controller - IKEA E2001/E2002 STYRBAR Remote control
 
     Controller automation for executing any kind of action triggered by the provided IKEA E2001/E2002 STYRBAR Remote control. Allows to optionally loop an action on a button long press.
-    Supports deCONZ, ZHA, Zigbee2MQTT.
+    Supports deCONZ, ZHA, Zigbee2MQTT and Zigbee2MQTT using topic (Z2M)
 
     Automations created with this blueprint can be connected with one or more [Hooks](https://epmatt.github.io/awesome-ha-blueprints/docs/blueprints/hooks) supported by this controller.
     Hooks allow to easily create controller-based automations for interacting with media players, lights, covers and more.
@@ -28,6 +28,9 @@ blueprint:
             - deCONZ
             - ZHA
             - Zigbee2MQTT
+            - Z2M
+          multiple: false
+          custom_value: false
     controller_device:
       name: (deCONZ, ZHA) Controller Device
       description: The controller device to use for the automation. Choose a value only if the remote is integrated with deCONZ, ZHA.
@@ -41,6 +44,10 @@ blueprint:
       selector:
         entity:
           domain: sensor
+    controller_topic:
+      name: (Z2M) Controller Topic
+      description: The topic of the controller to use for the automation. Choose a value only if the remote is integrated with Z2M (Zigbee2MQTT with topics).
+      default: 'zigbee2mqtt/'
     helper_last_controller_event:
       name: (Required) Helper - Last Controller Event
       description: Input Text used to store the last event fired by the controller. You will need to manually create a text input entity for this, please read the blueprint Additional Notes for more info.
@@ -333,6 +340,19 @@ variables:
       button_down_short: ['off']
       button_down_long: [brightness_move_down]
       button_down_release: [brightness_stop]
+    z2m:
+      button_left_short: [arrow_left_click]
+      button_left_long: [arrow_left_hold]
+      button_left_release: [arrow_left_release]
+      button_right_short: [arrow_right_click]
+      button_right_long: [arrow_right_hold]
+      button_right_release: [arrow_right_release]
+      button_up_short: ['on']
+      button_up_long: [brightness_move_up]
+      button_up_release: [brightness_stop]
+      button_down_short: ['off']
+      button_down_long: [brightness_move_down]
+      button_down_release: [brightness_stop]
   # pre-choose actions for buttons based on configured integration
   # no need to perform this task at automation runtime
   button_left_short: '{{ actions_mapping[integration_id]["button_left_short"] }}'
@@ -348,11 +368,12 @@ variables:
   button_down_long: '{{ actions_mapping[integration_id]["button_down_long"] }}'
   button_down_release: '{{ actions_mapping[integration_id]["button_down_release"] }}'
   # integrations which need to store the previous press event to determine which button was released
-  integrations_with_prev_event_storage: [zha, zigbee2mqtt]
+  integrations_with_prev_event_storage: [zha, zigbee2mqtt, z2m]
   # build data to send within a controller event
   controller_entity: !input controller_entity
   controller_device: !input controller_device
-  controller_id: '{% if integration_id=="zigbee2mqtt" %}{{controller_entity}}{% else %}{{controller_device}}{% endif %}'
+  controller_topic: !input controller_topic
+  controller_id: '{% if integration_id=="zigbee2mqtt" %}{{controller_entity}}{% elif integration_id=="z2m" %}{{controller_topic}}{% else %}{{controller_device}}{% endif %}'
 mode: restart
 max_exceeded: silent
 trigger:
@@ -368,6 +389,8 @@ trigger:
       - zha_event
     event_data:
       device_id: !input controller_device
+  - platform: mqtt
+    topic: !input controller_topic
 condition:
   - condition: and
     conditions:
@@ -376,6 +399,8 @@ condition:
         {%- set trigger_action -%}
         {%- if integration_id == "zigbee2mqtt" -%}
         {{ trigger.event.data.new_state.state }}
+        {%- elif integration_id == "z2m" -%}
+        {{ trigger.payload_json.action }}
         {%- elif integration_id == "deconz" -%}
         {{ trigger.event.data.event }}
         {%- elif integration_id == "zha" -%}
@@ -398,6 +423,8 @@ action:
       trigger_action: >-
         {%- if integration_id == "zigbee2mqtt" -%}
         {{ trigger.event.data.new_state.state }}
+        {%- elif integration_id == "z2m" -%}
+        {{ trigger.payload_json.action }}
         {%- elif integration_id == "deconz" -%}
         {{ trigger.event.data.event }}
         {%- elif integration_id == "zha" -%}

@@ -5,7 +5,7 @@ blueprint:
     # Controller - IKEA E1812 TRÅDFRI Shortcut button
 
     Controller automation for executing any kind of action triggered by the provided IKEA E1812 TRÅDFRI Shortcut button. Allows to optionally loop an action on a button long press.
-    Supports deCONZ, ZHA, Zigbee2MQTT.
+    Supports deCONZ, ZHA, Zigbee2MQTT and Zigbee2MQTT using topic (Z2M)
 
     Automations created with this blueprint can be connected with one or more [Hooks](https://epmatt.github.io/awesome-ha-blueprints/docs/blueprints/hooks) supported by this controller.
     Hooks allow to easily create controller-based automations for interacting with media players, lights, covers and more.
@@ -28,6 +28,9 @@ blueprint:
             - deCONZ
             - ZHA
             - Zigbee2MQTT
+            - Z2M
+          multiple: false
+          custom_value: false
     controller_device:
       name: (deCONZ, ZHA) Controller Device
       description: The controller device to use for the automation. Choose a value only if the remote is integrated with deCONZ, ZHA.
@@ -41,6 +44,10 @@ blueprint:
       selector:
         entity:
           domain: sensor
+    controller_topic:
+      name: (Z2M) Controller Topic
+      description: The topic of the controller to use for the automation. Choose a value only if the remote is integrated with Z2M (Zigbee2MQTT with topics).
+      default: 'zigbee2mqtt/'
     helper_last_controller_event:
       name: (Required) Helper - Last Controller Event
       description: Input Text used to store the last event fired by the controller. You will need to manually create a text input entity for this, please read the blueprint Additional Notes for more info.
@@ -153,6 +160,10 @@ variables:
       button_short: ['on']
       button_long: [brightness_move_up]
       button_release: [brightness_stop]
+    z2m:
+      button_short: ['on']
+      button_long: [brightness_move_up]
+      button_release: [brightness_stop]
   # pre-choose actions for buttons based on configured integration
   # no need to perform this task at automation runtime
   button_short: '{{ actions_mapping[integration_id]["button_short"] }}'
@@ -161,7 +172,8 @@ variables:
   # build data to send within a controller event
   controller_entity: !input controller_entity
   controller_device: !input controller_device
-  controller_id: '{% if integration_id=="zigbee2mqtt" %}{{controller_entity}}{% else %}{{controller_device}}{% endif %}'
+  controller_topic: !input controller_topic
+  controller_id: '{% if integration_id=="zigbee2mqtt" %}{{controller_entity}}{% elif integration_id=="z2m" %}{{controller_topic}}{% else %}{{controller_device}}{% endif %}'
 mode: restart
 max_exceeded: silent
 trigger:
@@ -177,6 +189,8 @@ trigger:
       - zha_event
     event_data:
       device_id: !input controller_device
+  - platform: mqtt
+    topic: !input controller_topic
 condition:
   - condition: and
     conditions:
@@ -185,6 +199,8 @@ condition:
         {%- set trigger_action -%}
         {%- if integration_id == "zigbee2mqtt" -%}
         {{ trigger.event.data.new_state.state }}
+        {%- elif integration_id == "z2m" -%}
+        {{ trigger.payload_json.action }}
         {%- elif integration_id == "deconz" -%}
         {{ trigger.event.data.event }}
         {%- elif integration_id == "zha" -%}
@@ -207,12 +223,15 @@ action:
       trigger_action: >-
         {%- if integration_id == "zigbee2mqtt" -%}
         {{ trigger.event.data.new_state.state }}
+        {%- elif integration_id == "z2m" -%}
+        {{ trigger.payload_json.action }}
         {%- elif integration_id == "deconz" -%}
         {{ trigger.event.data.event }}
         {%- elif integration_id == "zha" -%}
         {{ trigger.event.data.command }}{{"_" if trigger.event.data.args|length > 0}}{{ trigger.event.data.args|join("_") }}
         {%- endif -%}
       trigger_delta: '{{ (as_timestamp(now()) - ((states(helper_last_controller_event) | from_json).t if helper_last_controller_event is not none and (states(helper_last_controller_event) | regex_match("^\{((\"a\": \".*\"|\"t\": \d+\.\d+)(, )?){2}\}$")) else as_timestamp("1970-01-01 00:00:00"))) * 1000 }}'
+      last_controller_event: '{{ (states(helper_last_controller_event) | from_json).a if helper_last_controller_event is not none and (states(helper_last_controller_event) | regex_match("^\{((\"a\": \".*\"|\"t\": \d+\.\d+)(, )?){2}\}$")) else "" }}'
   # update helper
   - service: input_text.set_value
     data:

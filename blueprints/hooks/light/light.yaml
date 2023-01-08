@@ -33,6 +33,13 @@ blueprint:
       selector:
         entity:
           domain: sensor
+    controller_topic:
+      name: (Required) Controller Topic
+      description: The controller topic which will control the Light. Choose a value only if the integration used to connect the controller to Home Assistant is Z2M. This value should match the one specified in the corresponding Controller automation.
+      default: 'zigbee2mqtt/'
+      selector:
+        entity:
+          domain: input_text
     controller_model:
       name: (Required) Controller model
       description: The model for the controller used in this automation. Choose a value from the list of supported controllers.
@@ -356,6 +363,10 @@ trigger:
     event_type: ahb_controller_event
     event_data:
       controller: !input controller_entity
+  - platform: event
+    event_type: ahb_controller_event
+    event_data:
+      controller: !input controller_topic
 condition: []
 action:
   - variables:
@@ -375,6 +386,7 @@ action:
               - service: light.toggle
                 entity_id: !input light
                 data:
+                  entity_id: !input light
                   transition: '{{ light_transition / 1000 }}'
       - conditions: '{{ action == turn_on }}'
         sequence:
@@ -388,14 +400,17 @@ action:
                       transition: '{{ light_transition / 1000 }}'
             default:
               - service: light.turn_on
-                entity_id: !input light
+                target:
+                  entity_id: !input light
                 data:
                   transition: '{{ light_transition / 1000 }}'
+
       - conditions: '{{ action == turn_off }}'
         sequence:
           - service: light.turn_off
             entity_id: !input light
             data:
+              entity_id: !input light
               transition: '{{ light_transition / 1000 }}'
       - conditions: '{{ action == brightness_up }}'
         sequence:
